@@ -1,5 +1,5 @@
 streamlit>=1.39
-streamlit-drawable-canvas>=0.9.3
+streamlit-drawable-canvas-fix==0.9.8
 pypdf>=5.0
 reportlab>=4.0
 Pillow>=10.0
