@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import hmac
 import io
 import json
 import secrets
@@ -219,11 +220,34 @@ def admin_page():
         st.info("Nessuna richiesta creata.")
 
 
+def admin_authorized():
+    """Protegge la pagina principale; i link tokenizzati restano apribili dai genitori."""
+    try:
+        expected = str(st.secrets.get("PROTOTYPE_ADMIN_PASSWORD", "") or "")
+    except Exception:
+        expected = ""
+    if not expected:
+        st.error("Password amministratore non configurata nei Secrets.")
+        st.code('PROTOTYPE_ADMIN_PASSWORD = "inserisci-qui-una-password-lunga"', language="toml")
+        return False
+    if st.session_state.get("prototype_admin_ok"):
+        return True
+    st.title("🔐 Accesso amministratore")
+    password = st.text_input("Password", type="password")
+    if st.button("ACCEDI", type="primary", use_container_width=True):
+        if hmac.compare_digest(password, expected):
+            st.session_state["prototype_admin_ok"] = True
+            st.rerun()
+        else:
+            st.error("Password non corretta.")
+    return False
+
+
 st.set_page_config(page_title=APP_TITLE, page_icon="✍️", layout="centered")
 token = st.query_params.get("token", "")
 if isinstance(token, list):
     token = token[0] if token else ""
 if token:
     signature_page(str(token))
-else:
+elif admin_authorized():
     admin_page()
