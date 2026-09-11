@@ -4,7 +4,9 @@ import hmac
 import io
 import json
 import secrets
+import smtplib
 from datetime import datetime
+from email.message import EmailMessage
 from pathlib import Path
 
 import streamlit as st
@@ -18,6 +20,7 @@ from streamlit_drawable_canvas import st_canvas
 APP_TITLE = "Firma mobile modulo FIPAV - Prototipo"
 DATA_DIR = Path("dati_firma_prototipo")
 INDEX_FILE = DATA_DIR / "richieste.json"
+DEFAULT_TEST_RECIPIENT = "cucigno63@yahoo.it"
 
 # Coordinate in punti PDF, misurate sul Modulo F A4 allegato.
 # Ogni pagina contiene tre atlete; il prototipo firma il riquadro del genitore.
@@ -100,6 +103,35 @@ def sign_pdf(pdf_bytes, page_number, slot, signature_image, signer, signed_at):
     return out.getvalue()
 
 
+def send_signed_pdf(recipient, athlete, pdf_bytes, filename):
+    """Invia il PDF tramite Gmail usando esclusivamente i Secrets di Streamlit."""
+    try:
+        email_cfg = st.secrets.get("email", {})
+        sender = str(email_cfg.get("sender", "promozionale.mv@gmail.com") or "").strip()
+        app_password = str(email_cfg.get("app_password", "") or "").replace(" ", "")
+    except Exception:
+        sender, app_password = "", ""
+    recipient = str(recipient or "").strip().lower()
+    if not sender or not app_password:
+        raise RuntimeError("configura [email] sender e app_password nei Secrets di Streamlit")
+    if "@" not in recipient:
+        raise RuntimeError("indirizzo e-mail destinatario non valido")
+
+    message = EmailMessage()
+    message["From"] = sender
+    message["To"] = recipient
+    message["Subject"] = f"Modulo F FIPAV firmato - {athlete}"
+    message.set_content(
+        f"Buongiorno,\n\n"
+        f"in allegato trova il Modulo F FIPAV firmato relativo all'atleta {athlete}.\n\n"
+        f"Cordiali saluti\nMonviso Volley"
+    )
+    message.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=filename)
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
+        smtp.login(sender, app_password)
+        smtp.send_message(message)
+
+
 def create_request(pdf_bytes, athlete, parent_email, page_number, slot, base_url):
     token = secrets.token_urlsafe(24)
     request_dir = DATA_DIR / token
@@ -174,11 +206,21 @@ def signature_page(token):
                 "firmato_il": signed_at,
                 "pdf_firmato": str(signed_path),
                 "hash_firmato": hashlib.sha256(signed).hexdigest(),
-                "invio": f"SIMULATO verso {record.get('email_genitore') or 'email non indicata'}",
+                "invio": "DA INVIARE",
             })
             index[token] = record
             save_index(index)
-            st.success("Firma acquisita e PDF generato. Invio e-mail simulato correttamente.")
+            try:
+                send_signed_pdf(
+                    record.get("email_genitore"), record["atleta"], signed, signed_path.name
+                )
+                record["invio"] = f"INVIATO a {record['email_genitore']} il {signed_at}"
+                st.success(f"Firma acquisita. PDF inviato a {record['email_genitore']}.")
+            except Exception as mail_exc:
+                record["invio"] = f"ERRORE INVIO: {mail_exc}"
+                st.warning(f"PDF generato, ma e-mail non inviata: {mail_exc}")
+            index[token] = record
+            save_index(index)
             st.download_button("📥 SCARICA PDF FIRMATO", signed, file_name=signed_path.name, mime="application/pdf", use_container_width=True)
         except Exception as exc:
             st.error(f"Impossibile generare il PDF: {exc}")
@@ -186,10 +228,10 @@ def signature_page(token):
 
 def admin_page():
     st.title("🧪 Prototipo firma mobile FIPAV")
-    st.warning("Ambiente di prova: nessuna e-mail viene inviata realmente.")
+    st.info("Ambiente di prova: dopo la firma il PDF viene inviato all'indirizzo indicato.")
     uploaded = st.file_uploader("Carica il Modulo F FIPAV", type=["pdf"])
     athlete = st.text_input("Atleta della prova", value="CAMMARATA SOFIA")
-    parent_email = st.text_input("E-mail genitore per la simulazione", placeholder="genitore@email.it")
+    parent_email = st.text_input("E-mail destinataria della prova", value=DEFAULT_TEST_RECIPIENT)
     c1, c2 = st.columns(2)
     page_number = c1.number_input("Pagina del PDF", min_value=1, value=1, step=1)
     slot = c2.selectbox("Posizione atleta nella pagina", [1, 2, 3], format_func=lambda x: f"{x}ª atleta")
