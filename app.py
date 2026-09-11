@@ -22,9 +22,9 @@ INDEX_FILE = DATA_DIR / "richieste.json"
 # Coordinate in punti PDF, misurate sul Modulo F A4 allegato.
 # Ogni pagina contiene tre atlete; il prototipo firma il riquadro del genitore.
 PARENT_BOXES = {
-    1: (397, 444, 164, 43),
-    2: (397, 282, 164, 43),
-    3: (397, 119, 164, 43),
+    1: (400, 450, 160, 16),
+    2: (400, 288, 160, 16),
+    3: (400, 126, 160, 16),
 }
 
 
@@ -80,10 +80,10 @@ def sign_pdf(pdf_bytes, page_number, slot, signature_image, signer, signed_at):
     overlay_buffer = io.BytesIO()
     overlay = canvas.Canvas(overlay_buffer, pagesize=(page_w, page_h))
     margin = 3
-    scale = min((w - 2 * margin) / sig.width, (h - 7) / sig.height)
+    scale = min((w - 2 * margin) / sig.width, (h - 5) / sig.height)
     draw_w, draw_h = sig.width * scale, sig.height * scale
     draw_x = x + (w - draw_w) / 2
-    draw_y = y + 5 + (h - 5 - draw_h) / 2
+    draw_y = y + 3 + (h - 3 - draw_h) / 2
     overlay.drawImage(ImageReader(sig_buffer), draw_x, draw_y, width=draw_w, height=draw_h, mask="auto")
     overlay.save()
     overlay_buffer.seek(0)
